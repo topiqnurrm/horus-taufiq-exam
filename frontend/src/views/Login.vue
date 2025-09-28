@@ -87,6 +87,11 @@ export default {
         const result = await this.login(this.form)
 
         if (result.success) {
+          // simpan token dan user ke localStorage
+          // localStorage.setItem('token', result.token)
+          // localStorage.setItem('user', JSON.stringify(result.user))
+
+          // pindah ke dashboard
           this.$router.push('/dashboard')
         } else {
           this.errorMessage = result.message

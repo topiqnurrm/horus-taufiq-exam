@@ -1,8 +1,9 @@
+<!-- src/views/Dashboard.vue -->
 <template>
   <div class="dashboard">
     <div class="dashboard-header">
       <h1>DASHBOARD PENGGUNA</h1>
-      <button @click="logout" class="btn btn-logout">Logout</button>
+      <button @click="handleLogout" class="btn btn-logout">Logout</button>
     </div>
 
     <div class="dashboard-content">
@@ -22,17 +23,22 @@
     <div v-if="showDeleteModal" class="modal-overlay" @click="closeDeleteModal">
       <div class="modal" @click.stop>
         <h3>Konfirmasi Hapus</h3>
-        <p>Apakah Anda yakin ingin menghapus user <strong>{{ userToDelete && nama }}</strong>?</p>
+        <p>Apakah Anda yakin ingin menghapus user <strong>{{ userToDelete && userToDelete.nama }}</strong>?</p>
         <div class="modal-buttons">
-          <button @click="confirmDelete" class="btn btn-danger">Ya, Hapus</button>
-          <button @click="closeDeleteModal" class="btn btn-secondary">Batal</button>
+          <button @click="confirmDelete" class="btn btn-danger" :disabled="loading">
+            {{ loading ? 'Menghapus...' : 'Ya, Hapus' }}
+          </button>
+          <button @click="closeDeleteModal" class="btn btn-secondary" :disabled="loading">Batal</button>
         </div>
       </div>
     </div>
 
     <!-- Loading Overlay -->
     <div v-if="loading" class="loading-overlay">
-      <div class="loading-spinner">Loading...</div>
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+      </div>
     </div>
   </div>
 </template>
@@ -71,12 +77,19 @@ export default {
       const query = this.searchQuery.toLowerCase()
       return this.users.filter(user =>
         user.nama.toLowerCase().includes(query) ||
-        user.username.toLowerCase().includes(query)
+        user.username.toLowerCase().includes(query) ||
+        user.email.toLowerCase().includes(query)
       )
     }
   },
 
-  async created () {
+  async mounted () {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      this.$router.push('/login')
+      return
+    }
+
     await this.loadUsers()
   },
 
@@ -86,11 +99,34 @@ export default {
     async loadUsers () {
       this.loading = true
       try {
+        console.log('Loading users from API...')
         const response = await api.get('/users')
-        this.users = response.data
+
+        if (Array.isArray(response.data)) {
+          this.users = response.data
+          console.log('Users loaded successfully:', this.users.length)
+        } else {
+          console.error('Invalid response format:', response.data)
+          alert('Format response tidak valid')
+        }
       } catch (error) {
         console.error('Error loading users:', error)
-        alert('Gagal memuat data pengguna')
+
+        const status = error.response && error.response.status
+        const msg = (error.response && error.response.data && error.response.data.message) || error.message
+
+        if (status === 401) {
+          alert('Sesi Anda telah berakhir. Silakan login kembali.')
+          this.handleLogout()
+        } else if (status === 404) {
+          alert('Endpoint tidak ditemukan. Periksa konfigurasi backend.')
+        } else if (status === 422) {
+          alert('Request tidak dapat diproses. Periksa format data.')
+        } else if (error.message === 'Network Error') {
+          alert('Tidak dapat terhubung ke server. Pastikan backend berjalan di port 5001.')
+        } else {
+          alert(`Gagal memuat data pengguna: ${msg}`)
+        }
       } finally {
         this.loading = false
       }
@@ -110,8 +146,10 @@ export default {
     },
 
     closeDeleteModal () {
-      this.showDeleteModal = false
-      this.userToDelete = null
+      if (!this.loading) {
+        this.showDeleteModal = false
+        this.userToDelete = null
+      }
     },
 
     async confirmDelete () {
@@ -119,19 +157,22 @@ export default {
 
       this.loading = true
       try {
+        console.log('Deleting user:', this.userToDelete.id)
         await api.delete(`/users/${this.userToDelete.id}`)
-        await this.loadUsers() // Reload data
+        await this.loadUsers()
         this.closeDeleteModal()
         alert('User berhasil dihapus')
       } catch (error) {
         console.error('Error deleting user:', error)
-        alert('Gagal menghapus user')
+
+        const msg = (error.response && error.response.data && error.response.data.message) || error.message
+        alert(`Gagal menghapus user: ${msg}`)
       } finally {
         this.loading = false
       }
     },
 
-    logout () {
+    handleLogout () {
       this.$store.dispatch('logout')
       this.$router.push('/login')
     }
@@ -165,6 +206,7 @@ export default {
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  transition: background-color 0.3s ease;
 }
 
 .btn-logout:hover {
@@ -176,7 +218,6 @@ export default {
   margin: 0 auto;
 }
 
-/* Modal Styles */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -196,6 +237,7 @@ export default {
   border-radius: 8px;
   max-width: 400px;
   width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .modal h3 {
@@ -222,12 +264,17 @@ export default {
   transition: background-color 0.3s;
 }
 
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .btn-danger {
   background-color: #dc3545;
   color: white;
 }
 
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
   background-color: #c82333;
 }
 
@@ -236,11 +283,10 @@ export default {
   color: white;
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background-color: #5a6268;
 }
 
-/* Loading Overlay */
 .loading-overlay {
   position: fixed;
   top: 0;
@@ -258,8 +304,29 @@ export default {
   background: white;
   padding: 2rem;
   border-radius: 8px;
-  font-size: 1.2rem;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #007bff;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-spinner p {
+  margin: 0;
   color: #333;
+  font-size: 1.1rem;
 }
 
 @media (max-width: 768px) {

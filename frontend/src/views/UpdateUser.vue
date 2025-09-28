@@ -88,7 +88,8 @@ export default {
       this.loading = true
       try {
         const response = await api.get('/users')
-        const user = response.data.find(u => u.id === this.userId)
+        // const user = response.data.find(u => u.id === this.userId)
+        const user = response.data.find(u => u.id === parseInt(this.userId))
 
         if (user) {
           this.form = {
